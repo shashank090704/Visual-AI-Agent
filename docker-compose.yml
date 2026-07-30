@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   mongodb:
     image: mongo:7.0
@@ -12,5 +10,90 @@ services:
       - mongo_data:/data/db
     restart: always
 
+  redis:
+    image: redis:7.2-alpine
+    container_name: visual_ai_redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    restart: always
+
+  minio:
+    image: minio/minio:latest
+    container_name: visual_ai_minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    restart: always
+
+  gateway:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: visual_ai_gateway
+    ports:
+      - "5000:5000"
+    environment:
+      - PORT=5000
+      - MONGO_URI=mongodb://mongodb:27017/visual_ai_agent
+      - REDIS_URL=redis://redis:6379
+      - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin123
+      - MINIO_BUCKET=visual-ai-screenshots
+      - MINIO_PUBLIC_URL=http://localhost:9000
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_MODEL=gemini-1.5-flash
+      - NODE_ENV=production
+    depends_on:
+      - mongodb
+      - redis
+      - minio
+    restart: always
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.worker
+    container_name: visual_ai_worker
+    environment:
+      - MONGO_URI=mongodb://mongodb:27017/visual_ai_agent
+      - REDIS_URL=redis://redis:6379
+      - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin123
+      - MINIO_BUCKET=visual-ai-screenshots
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_MODEL=gemini-1.5-flash
+      - GEMINI_RPM_LIMIT=10
+      - GEMINI_RPD_LIMIT=1500
+      - NODE_ENV=production
+    depends_on:
+      - mongodb
+      - redis
+      - minio
+    restart: always
+
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    container_name: visual_ai_dashboard
+    ports:
+      - "3000:3000"
+    depends_on:
+      - gateway
+    restart: always
+
 volumes:
   mongo_data:
+  redis_data:
+  minio_data:
