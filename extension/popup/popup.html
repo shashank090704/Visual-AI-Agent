@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Visual AI Agent</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <div class="logo">
+        <span class="pulse-dot" id="status-dot"></span>
+        <h2>Visual AI Agent</h2>
+      </div>
+      <span class="badge" id="status-text">Active</span>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="session-info">
+      <div class="label">ACTIVE SESSION</div>
+      <div class="session-id" id="session-id">Loading...</div>
+    </div>
+
+    <div class="control-row">
+      <span>Monitor Screen & Activity</span>
+      <label class="switch">
+        <input type="checkbox" id="toggle-switch" checked>
+        <span class="slider round"></span>
+      </label>
+    </div>
+
+    <div class="privacy-note">
+      🔒 Sensitive password fields & credit card numbers are automatically redacted client-side.
+    </div>
+
+    <div class="footer">
+      <a href="http://localhost:3000" target="_blank" class="dashboard-link">Open Web Dashboard ↗</a>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
