@@ -1,0 +1,24 @@
+{
+  "name": "visual-ai-backend",
+  "version": "2.0.0",
+  "description": "Express Ingestion Gateway & Gemini AI Processing Pipeline — Architecture v2",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "worker": "node worker/worker.js",
+    "worker:dev": "node --watch worker/worker.js"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.645.0",
+    "@aws-sdk/lib-storage": "^3.645.0",
+    "@google/generative-ai": "^0.24.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "ioredis": "^5.4.1",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.7.0",
+    "morgan": "^1.10.0"
+  }
+}
