@@ -1,61 +1,93 @@
-# Visual AI Agent — Chrome Browser Monitoring & Analysis Tool
+# Visual AI Agent
 
-A privacy-focused, real-time **Visual AI Agent** built with **Chrome Extension (Manifest V3)**, **Express Node.js Gateway**, **MongoDB Atlas (Time-Series & Insights)**, **Gemini 1.5 Flash Vision AI**, and a **React Dashboard**.
+This is a side project I built to track browser activity and process the screen captures using Gemini Vision AI. The goal was to figure out a way to monitor user intent in real time without blocking the browser thread and while handling API limits gracefully.
 
----
+It consists of a Chrome extension that captures the screen/DOM events, an Express API that ingests everything, Redis to queue it up, a background worker that runs the image processing (Gemini 1.5), and a React dashboard to view the data.
 
-## 🌟 Key Features
+## Architecture 
 
-- 🔌 **Chrome Extension (Manifest V3)**: Captures compressed tab screenshots and DOM activity events while auto-scrubbing sensitive input fields (`password`, credit cards, `data-private`).
-- ⚡ **Express Ingestion Gateway**: Fast-response ingestion returning `202 Accepted` in `<50ms`.
-- 🗄️ **MongoDB Atlas / Time Series**: Stores user sessions, granular activity events, and AI structured analysis.
-- 🧠 **Gemini Vision AI Pipeline**: Multimodal prompt analysis classifying user actions, UI elements, intents, and confidence scores.
-- 🛡️ **Token Bucket Rate Limiter & Frame Deduplication**: Uses perceptual dHash frame difference calculation to avoid duplicate AI processing on idle screens and enforces Gemini Free Tier caps.
-- 📊 **React + Vite Dashboard**: Interactive activity timeline, screenshot visualizer, AI insight panel, and rate limit status monitor.
-
----
-
-## 📁 Repository Structure
-
+```text
+┌───────────────────────────────────────────────────────────────┐
+│                  BROWSER CLIENT (EXTENSION)                   │
+│                                                               │
+│   ┌────────────────────────┐      ┌────────────────────────┐  │
+│   │     Content Script     │      │   Background Worker    │  │
+│   │  (DOM Listener/Batch)  │      │   (Tab Screenshot)     │  │
+│   └────────────┬───────────┘      └────────────┬───────────┘  │
+└────────────────┼───────────────────────────────┼──────────────┘
+                 └──────────────┬────────────────┘
+                                │ Batched payload · HTTP/2 POST
+                                ▼
+┌───────────────────────────────────────────────────────────────┐
+│               INGESTION GATEWAY (Express API)                 │
+│      auth check → strip image → write metadata → enqueue job  │
+└───────────┬───────────────────┬────────────────────┬──────────┘
+            │                   │                    │
+            ▼                   ▼                    ▼
+  ┌───────────────────┐  ┌───────────────────┐  ┌────────────────────┐
+  │  OBJECT STORAGE   │  │      MongoDB      │  │   MESSAGE BROKER   │
+  │  MinIO (S3)       │  │   Atlas / Local   │  │   Redis Streams    │
+  │  compressed .jpg  │  │  events · insights│  │   topic: screen_raw│
+  └───────────────────┘  └─────────▲─────────┘  └──────────┬─────────┘
+                                   │                       │ consume
+                                   │ write insights        ▼
+                                   │           ┌─────────────────────────────┐
+                                   │           │    RATE LIMITER + DEDUP     │
+                                   │           │  token bucket · frame-diff  │
+                                   │           └───────────────┬─────────────┘
+                                   │                           │ approved jobs
+                                   │                           ▼
+                                   │           ┌─────────────────────────────┐
+                                   └───────────│      AI WORKER SERVICE      │
+                                               │       Node.js Standalone    │
+                                               └───────────────┬─────────────┘
+                                                               │ multimodal prompt
+                                                               ▼
+                                               ┌─────────────────────────────┐
+                                               │   GEMINI API — FREE TIER    │
+                                               │  Flash / Flash-Lite (vision)│
+                                               └─────────────────────────────┘
 ```
-.
-├── extension/      # Chrome Extension (Manifest V3)
-├── backend/        # Node.js + Express Gateway & Gemini AI Worker
-├── dashboard/      # React + Vite Web Dashboard
-├── docker-compose.yml # Local MongoDB Docker Setup
-└── README.md
-```
 
----
+(See `ARCHITECTURE.md` for more details on the data models and component breakdown)
 
-## 🚀 Getting Started
+## Tech Stack
 
-### 1. Backend Setup
+- **Extension**: Vanilla JS (Manifest V3)
+- **Backend API**: Node.js & Express
+- **Worker**: Standalone Node.js process 
+- **Message Broker**: Redis Streams
+- **Storage**: MinIO (images) & MongoDB (metadata, time-series events)
+- **Frontend**: React + Vite
+- **AI**: Google Gemini 1.5 Flash Vision API
+
+## Running it locally
+
+You'll need Docker Desktop running for the databases.
+
+1. Clone the repo and boot the infrastructure:
 ```bash
-cd backend
-npm install
-cp .env.example .env
-# Add your GEMINI_API_KEY and MONGO_URI in .env
-npm start
+git clone https://github.com/shashank090704/Visual-AI-Agent.git
+cd Visual-AI-Agent
+docker-compose up --build -d
 ```
 
-### 2. Chrome Extension Installation
-1. Open Google Chrome and navigate to `chrome://extensions`.
-2. Enable **Developer mode** in the top-right toggle.
-3. Click **Load unpacked** and select the `extension` folder from this repository.
-4. Click on the Visual AI Agent extension icon to toggle active monitoring.
-
-### 3. Dashboard Setup
-```bash
-cd dashboard
-npm install
-npm run dev
+2. Set up the AI worker API key (Optional):
+If you want to use the actual Gemini vision model instead of the fallback rule engine, grab a free API key from Google AI Studio and put it in `backend/.env`:
+```env
+GEMINI_API_KEY=your_key_here
 ```
+Then restart the worker container: `docker-compose restart worker`
 
----
+3. Load the Extension:
+- Go to `chrome://extensions/`
+- Enable "Developer mode"
+- Click "Load unpacked" and pick the `extension` folder from this repo
+- Pin it in your toolbar and turn it on to start tracking.
 
-## 🔐 Privacy & Security Safeguards
+## Privacy & Rate Limiting details
 
-- DOM content script sanitizes `type="password"`, `autocomplete="cc-number"`, and `data-private` elements locally before data leaves the browser.
-- Incognito tabs are ignored by default.
-- Users can pause/resume tracking at any time using the extension popup UI.
+I added a few things to make this system actually usable without leaking data or hitting API limits:
+- Passwords and credit card inputs are replaced with `[REDACTED]` right in the browser before being sent.
+- The worker uses a perceptual difference hash (dHash) to check if the screen actually changed since the last screenshot. If you're just staring at a page and not scrolling, it skips the Gemini API call entirely.
+- I wrote a custom token bucket rate limiter to keep the requests under the Gemini free tier limit (10 req/min). If it hits the limit, it just holds the Redis stream messages until a token frees up.
